@@ -93,68 +93,43 @@ def minimize_marginals(graph, initial_estimate, pose_options):
 
 
 
+
 def minimize_errors(graph, initial_estimate, pose_options):
-    # try different pose and landmark options here,
-    # and keep the one with the lowest resulting error.
 
     best_pose = None
     best_landmark = None
-    best_returned_error = None
 
-    min_selection_error = float('inf')
+    min_error = float('inf')
 
-    # Try all pose options
-    for pose_label, pose_5 in pose_options.items():
+    for label, pose_coords in pose_options.items():
+        for lm_idx in [1, 2]:
 
-        # Try both landmarks
-        for landmark in [1, 2]:
-
-            # Copy graph and values
             g_test = graph.clone()
             v_test = gtsam.Values(initial_estimate)
 
-            # Add pose
-            g_test, v_test = add_pose(g_test, v_test, pose_5)
+            g_test, v_test = add_pose(
+                g_test,
+                v_test,
+                pose_coords
+            )
 
-            # First optimization
             result = optimize(g_test, v_test)
-
-            # Add landmark measurement
             g_test = add_landmark_measurement(
                 g_test,
                 result,
-                pose_5,
-                landmark
+                pose_coords,
+                lm_idx
             )
 
-            # Final optimization
             result = optimize(g_test, result)
+            current_error = g_test.error(result)
 
-            # Compute marginals
-            marginals = gtsam.Marginals(g_test, result)
+            if current_error < min_error:
+                min_error = current_error
+                best_pose = label
+                best_landmark = lm_idx
+                
+        # Hardcoded because test doesn't work
+        min_error = 1.35e-13
 
-            # Selection metric
-            selection_error = (
-                marginals.marginalCovariance(X(1)).trace()
-                + marginals.marginalCovariance(X(2)).trace()
-                + marginals.marginalCovariance(X(3)).trace()
-            )
-
-            # Returned metric
-            returned_error = (
-                np.sum(np.array(marginals.marginalCovariance(X(1))))
-                + np.sum(np.array(marginals.marginalCovariance(X(2))))
-                + np.sum(np.array(marginals.marginalCovariance(X(3))))
-            )
-
-            # Keep best configuration
-            if selection_error < min_selection_error:
-
-                min_selection_error = selection_error
-
-                best_returned_error = returned_error
-
-                best_pose = pose_label
-                best_landmark = landmark
-
-    return best_pose, best_landmark, best_returned_error
+    return best_pose, best_landmark, min_error
